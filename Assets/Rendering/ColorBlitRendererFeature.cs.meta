@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: 15947b07286b2d040bd39c0f340f648b
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - m_Shader: {fileID: 4800000, guid: 5669e9f43adf00e49a95b05cb1a46dde, type: 3}
+  - compute_shader_render: {fileID: 7200000, guid: 7a281a3a8c4a01e4a843c1b94f9f87da, type: 3}
+  - compute_shader_copy: {fileID: 7200000, guid: aa855e5cebc15134699504cadc412996, type: 3}
+  - compute_shader_clear: {fileID: 7200000, guid: 0d413e178c1b72b47b67b6ca48f74463, type: 3}
+  - temp_texture_left: {fileID: 8600000, guid: 480d9e3e29d88b545861aeeae5b9efd9, type: 2}
+  - temp_texture_right: {fileID: 8600000, guid: 37149d57739d89a41a1cae71131c22c7, type: 2}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

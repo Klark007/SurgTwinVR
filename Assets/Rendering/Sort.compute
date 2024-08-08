@@ -1,0 +1,219 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel BitonicSort
+#pragma kernel ComputeKeys
+#pragma kernel Shuffle
+#pragma target 5.0
+
+#define WORK_GROUP_SIZE 64
+
+struct Point
+{
+    float3 pos;
+    int col;
+};
+
+RWStructuredBuffer<uint> keys;
+RWStructuredBuffer<Point> values;
+
+// use GroupMemoryBarrierWithGroupSync or AllMemoryBarrierWithGroupSync 
+groupshared uint local_keys[WORK_GROUP_SIZE*2];
+groupshared Point local_values[WORK_GROUP_SIZE*2];
+
+#define LOCAL_BITONIC_MODE 0
+#define LOCAL_CROSSOVER_MODE 1
+#define GLOBAL_FLIP_MODE 2
+#define GLOBAL_CROSSOVER_MODE 3
+
+uniform int mode;
+
+uniform int n;
+uniform int h;
+
+void local_compare_and_swap(uint x, uint y)
+{
+    if (local_keys[x] > local_keys[y]) // want small first
+    {
+        uint tmp_k  = local_keys[x];        
+        local_keys[x] = local_keys[y];
+        local_keys[y] = tmp_k;
+        
+        Point tmp_p = local_values[x];
+        local_values[x] = local_values[y];
+        local_values[y] = tmp_p;
+    }
+}
+
+void global_compare_and_swap(uint x, uint y)
+{
+    if (keys[x] > keys[y] && x < (uint) n && y < (uint) n) // want small first
+    {
+        uint tmp_k = keys[x];
+        keys[x] = keys[y];
+        keys[y] = tmp_k;
+        
+        Point tmp_p = values[x];
+        values[x] = values[y];
+        values[y] = tmp_p;
+    }
+}
+
+void global_flip(uint t, uint h)
+{
+    uint half_h = h >> 1;
+    uint t_mod = t % half_h;
+    
+    uint offset = ((2 * t) / h) * h;
+    uint x = offset + t_mod;
+    uint y = offset + h - t_mod - 1;
+    
+    global_compare_and_swap(x, y);
+}
+
+void global_crossover(uint t, uint hh)
+{
+    uint half_hh = hh >> 1;
+    uint t_mod = t % half_hh;
+    
+    uint offset = ((2 * t) / hh) * hh;
+    uint x = offset + t_mod;
+    uint y = offset + t_mod + half_hh;
+    
+    global_compare_and_swap(x, y);
+}
+
+void local_flip(uint t, uint h)
+{
+    GroupMemoryBarrierWithGroupSync();
+
+    uint half_h = h >> 1;
+    uint t_mod = t % half_h;
+    
+    uint offset = ((2 * (t % WORK_GROUP_SIZE)) / h) * h;
+    uint x = offset + t_mod;
+    uint y = offset + h - t_mod - 1;
+    
+    // to generalize to non power of two
+    uint g_offset = ((2 * t) / h) * h;
+    uint gx = g_offset + t_mod;
+    uint gy = g_offset + h - t_mod - 1;
+    
+    if (gx < (uint) n && gy < (uint) n)
+    {
+        local_compare_and_swap(x, y);
+    }
+}
+
+void local_crossover(uint t, uint hh)
+{
+    for (; hh > 1; hh /= 2)
+    {
+        GroupMemoryBarrierWithGroupSync();
+        
+        uint half_hh = hh >> 1;
+        uint t_mod = t % half_hh;
+        
+        uint offset = ((2 * (t % WORK_GROUP_SIZE)) / hh) * hh;
+        uint x = offset + t_mod;
+        uint y = offset + t_mod + half_hh;
+        
+        // to generalize to non power of two
+        uint g_offset = ((2 * t) / hh) * hh;
+        uint gx = g_offset + t_mod;
+        uint gy = g_offset + t_mod + half_hh;
+    
+        if (gx < (uint) n && gy < (uint) n)
+        {
+            local_compare_and_swap(x, y);
+        }
+    }
+}
+
+void localBitonicSort(uint t)
+{
+    for (uint h = 2; h <= 2*WORK_GROUP_SIZE; h *= 2)
+    {   
+        local_flip(t, h);
+        local_crossover(t, h / 2);
+    }
+}
+
+[numthreads(WORK_GROUP_SIZE, 1, 1)]
+void BitonicSort (uint3 id : SV_DispatchThreadID)
+{
+    if (mode <= LOCAL_CROSSOVER_MODE)
+    {
+        local_keys[(id.x % WORK_GROUP_SIZE) * 2] = keys[id.x * 2];
+        local_keys[(id.x % WORK_GROUP_SIZE) * 2 + 1] = keys[id.x * 2 + 1];
+        
+        local_values[(id.x % WORK_GROUP_SIZE) * 2] = values[id.x * 2];
+        local_values[(id.x % WORK_GROUP_SIZE) * 2 + 1] = values[id.x * 2 + 1];
+    }
+    
+    switch (mode)
+    {
+        case LOCAL_BITONIC_MODE:
+            localBitonicSort(id.x);
+            break;
+        case LOCAL_CROSSOVER_MODE:
+            local_crossover(id.x, h);
+            break;
+        case GLOBAL_FLIP_MODE:
+            global_flip(id.x, h);
+            break;
+        case GLOBAL_CROSSOVER_MODE:
+            global_crossover(id.x, h);
+            break;
+    }
+
+    if (mode <= LOCAL_CROSSOVER_MODE)
+    {
+        GroupMemoryBarrierWithGroupSync();
+
+        keys[id.x * 2] = local_keys[(id.x % WORK_GROUP_SIZE) * 2];
+        keys[id.x * 2 + 1] = local_keys[(id.x % WORK_GROUP_SIZE) * 2 + 1];
+        
+        values[id.x * 2] = local_values[(id.x % WORK_GROUP_SIZE) * 2];
+        values[id.x * 2 + 1] = local_values[(id.x % WORK_GROUP_SIZE) * 2 + 1];
+    }
+}
+
+
+uint EncodeMorton3(uint x, uint y, uint z);
+
+[numthreads(WORK_GROUP_SIZE, 1, 1)]
+void ComputeKeys(uint3 id : SV_DispatchThreadID)
+{
+    // assumes position is in [-2000,2000]^3
+    uint x = uint(clamp((values[id.x].pos.x + 2) / 4000, 0, 1) * ((2 << 10) - 1)); // want it represented in a 10 bit number as then 3 values fit into a 32 bit morton code
+    uint y = uint(clamp((values[id.x].pos.y + 2) / 4000, 0, 1) * ((2 << 10) - 1));
+    uint z = uint(clamp((values[id.x].pos.z + 2) / 4000, 0, 1) * ((2 << 10) - 1));
+    
+    // visualize morton codes
+    //uint morton = EncodeMorton3(x, y, z);
+    //values[id.x].col = morton;
+    
+    keys[id.x] = EncodeMorton3(x, y, z);
+}
+
+// see https://fgiesen.wordpress.com/2009/12/13/decoding-morton-codes/, uint guaranteed to be 32 bit
+// "Insert" two 0 bits after each of the 10 low bits of x
+uint Part1By2(uint x)
+{
+    x &= 0x000003ff; // x = ---- ---- ---- ---- ---- --98 7654 3210
+    x = (x ^ (x << 16)) & 0xff0000ff; // x = ---- --98 ---- ---- ---- ---- 7654 3210
+    x = (x ^ (x << 8)) & 0x0300f00f; // x = ---- --98 ---- ---- 7654 ---- ---- 3210
+    x = (x ^ (x << 4)) & 0x030c30c3; // x = ---- --98 ---- 76-- --54 ---- 32-- --10
+    x = (x ^ (x << 2)) & 0x09249249; // x = ---- 9--8 --7- -6-- 5--4 --3- -2-- 1--0
+    return x;
+}
+
+uint EncodeMorton3(uint x, uint y, uint z)
+{
+    return (Part1By2(z) << 2) + (Part1By2(y) << 1) + Part1By2(x);
+}
+
+[numthreads(8, 1, 1)]
+void Shuffle(uint3 id : SV_DispatchThreadID)
+{
+    
+}

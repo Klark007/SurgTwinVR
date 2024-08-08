@@ -1,0 +1,78 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+#pragma target 5.0
+
+RWTexture2D<float4> texture_left;
+RWTexture2D<float4> texture_right;
+
+uniform float4x4 mvp_mat_left;
+uniform float4x4 mvp_mat_right;
+
+uniform int custom_rt_res_x;
+uniform int custom_rt_res_y;
+uniform RWStructuredBuffer<uint> custom_rt_left;
+uniform RWStructuredBuffer<uint> custom_rt_right;
+
+struct Point{
+    float3 pos;
+    int color;
+};
+
+uniform RWStructuredBuffer<Point> pointBuffer;
+
+float4 color_from_point(uint i_color);
+void draw_points(uint3 id, inout RWTexture2D<float4> _texture, float4x4 mat);
+void get_rt_color(inout RWTexture2D<float4> _texture, RWStructuredBuffer<uint> custom_rt, uint3 id);
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    // want id to range from 0 to width (i.e. height)
+    //get_rt_color(texture_left, custom_rt_left, id);
+    //get_rt_color(texture_right, custom_rt_right, id);
+    
+    draw_points(id, texture_left, mvp_mat_left);
+    draw_points(id, texture_right, mvp_mat_right);
+}
+
+void get_rt_color(inout RWTexture2D<float4> _texture, RWStructuredBuffer <uint>custom_rt, uint3 id)
+{
+    int screen_x = id.x;
+    int screen_y = id.y;
+                
+    int idx = screen_y * custom_rt_res_x + screen_x;
+
+    _texture[id.xy] = color_from_point(custom_rt[idx]);
+}
+
+void draw_points(uint3 id, inout RWTexture2D<float4> _texture, float4x4 mat)
+{   
+    _texture[id.xy] = float4(0, 0, 0, 1);
+    for (int i = 0; i < 5000; ++i)
+    {
+        float4 proj = mul(mat, float4(pointBuffer[i].pos, 1)); //mul(mat, float4(p.pos, 1));
+        float3 pos = proj.xyz / proj.w;
+    
+        float2 pixel_pos = (id.xy - float2(128, 128));
+        pixel_pos.x /= 128;
+        pixel_pos.y /= 128;
+        
+        float dist = distance(pos.xy, pixel_pos);
+        float radius = 0.01;
+
+        bool between_near_far_planes = -1 <= pos.z && pos.z <= 1;
+        if (dist < radius && between_near_far_planes)
+        {
+            _texture[id.xy] = color_from_point(uint(pointBuffer[i].color));
+        }
+    }
+}
+
+float4 color_from_point(uint i_color)
+{
+    float r = (float) (i_color & 0xFF);
+    float g = (float) ((i_color >> 8) & 0xFF);
+    float b = (float) ((i_color >> 16) & 0xFF);
+    
+    return float4(r / 255, g / 255, b / 255, 1);
+}
