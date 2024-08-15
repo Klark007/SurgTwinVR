@@ -1,6 +1,14 @@
 # VR renderer of animated point-clouds
 VR Demo: Virtual Reality for Immersive Education in Orthopedic Surgery Digital Twins
 
+## Download
+After cloning this repo, download the point cloud animation data from [here](https://polybox.ethz.ch/index.php/s/J3afMWTWKIrkXIr).
+Extract the archive in the pointclouds directory. The final directory structure should look as follows:
+```
+SurgTwinVR/Assets/pointclouds/animation/004140.ply
+```
+
+
 ## Installation
 1. Install Unity 2022.3.28f1 with Android Build Support, OpenJDK, Android SDK & NDK Tools
 2. Run using either Meta XR Simulator or via Meta Quest Link on physical hardware
