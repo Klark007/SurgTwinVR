@@ -5,7 +5,7 @@ This is the official implementation of Virtual Reality for Immersive Education i
 [Jonas Hein](https://scholar.google.com/citations?user=Kk_o9AYAAAAJ), [Jan Grunder](https://github.com/Klark007), [Lilian Calvet](https://scholar.google.com/citations?user=6JewdrMAAAAJ), [Fédéric Giraud](https://scholar.google.com/citations?user=Lf6jqg4AAAAJ), [Nicola Alessandro Cavalcanti](https://scholar.google.com/citations?user=ulEV9OkAAAAJ), [Fabio Carrillo](https://scholar.google.com/citations?user=n7A302IAAAAJ), [Philipp Fürnstahl](https://scholar.google.com/citations?user=nQ4B3BgAAAAJ)
 
 ## Download
-After cloning this repository, download the point cloud animation data from [here](https://polybox.ethz.ch/index.php/s/J3afMWTWKIrkXIr).
+After cloning this repository, download the point cloud animation data from [here](https://polybox.ethz.ch/index.php/s/87apfE8Fg3s4PF4).
 Extract the archive into the pointclouds directory. The final directory structure should look as follows:
 ```
 SurgTwinVR/Assets/pointclouds/animation/004140.ply
